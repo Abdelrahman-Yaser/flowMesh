@@ -1,36 +1,64 @@
-FlowMesh
-Reliable integrations and workflow execution for modern commerce systems.
-Project status: Early-stage development. The architecture and roadmap below describe the intended product. Features are not considered implemented until they are available and tested in the codebase.
+# FlowMesh
 
+**Reliable integrations and workflow execution for modern commerce systems.**
 
-The Problem
-Modern commerce businesses rely on several systems to run their operations: e-commerce platforms, payment providers, inventory systems, ERP platforms, warehouses, and shipping services.
+FlowMesh is an event-driven integration and job-processing platform designed to connect commerce systems and execute business workflows reliably.
 
-When these systems are connected through separate point-to-point integrations, each connection becomes another component that engineering teams must build, maintain, monitor, and troubleshoot. Traffic spikes can overwhelm downstream services, temporary API failures can interrupt order workflows, and repeated webhook deliveries can trigger duplicate processing.
+<sub>Project status: Early-stage development</sub>
 
-As integrations grow, so does the operational burden. Engineers spend time investigating failed jobs and maintaining custom retry logic, while operations teams may need to review and repair transactions manually. These problems consume engineering capacity, slow down business processes, and can put orders and revenue at risk.
-The Solution
-FlowMesh is a centralized integration and workflow execution layer designed to make communication between business systems more reliable.
+> **Note:** This project is under active development. The architecture and roadmap describe the intended system. Features are not considered implemented until they exist in the codebase and are tested.
 
-Instead of requiring every application to implement its own delivery, retry, and failure-handling logic, FlowMesh is designed to accept business events, persist them, and process them asynchronously through controlled workers.
+---
 
-Its reliability model is built around durable persistence, idempotent processing, a transactional outbox, message queues, retry policies, and failure handling. The goal is to give engineering teams one place to manage the execution of integrations rather than maintaining a collection of disconnected, one-off pipelines.
+## Tech Stack
+
+| Category | Technology |
+|---|---|
+| Runtime | Node.js |
+| Language | TypeScript |
+| Framework | NestJS |
+| Database | PostgreSQL |
+| ORM | TypeORM |
+| Message Broker | RabbitMQ |
+| Infrastructure | Docker & Docker Compose |
+| API Documentation | OpenAPI / Swagger (planned) |
+| Observability | OpenTelemetry / Prometheus (planned) |
+
+---
+
+## Overview
+
+Modern commerce systems depend on multiple services, including e-commerce platforms, payment providers, inventory systems, ERPs, warehouses, and shipping providers.
+
+Connecting these systems through individual integrations introduces operational complexity. Each integration needs its own delivery logic, retry mechanisms, error handling, and monitoring.
+
+FlowMesh addresses this problem by introducing a centralized integration and workflow execution layer.
+
+Instead of building and maintaining separate integration pipelines, applications can submit business events to FlowMesh, where they are persisted and processed asynchronously through controlled workers.
+
+The system is designed around:
+
+- **Durable persistence:** PostgreSQL acts as the source of truth for events and jobs.
+- **Reliable messaging:** A transactional outbox ensures that committed work can be published to RabbitMQ.
+- **Idempotent processing:** Duplicate submissions and message deliveries are handled safely.
+- **Controlled execution:** Workers process jobs asynchronously with configurable concurrency.
+- **Failure recovery:** Retry policies and dead-letter handling provide explicit recovery paths.
+- **Multi-tenancy:** Tenant-scoped data access isolates customer operations.
+
+The objective is to make integrations easier to operate, monitor, and scale without coupling business systems directly to one another.
+
+---
+
 ## Architecture Overview
 
-![FlowMesh Architecture](docs/image/FlowMesh.png)
+![FlowMesh Architecture](./docs/image/FlowMesh.png)
 
-Explore the technical details: [Read the Event Ingestion & Processing Flow](docs/architecture/event-ingestion-flow.md)
+For a detailed explanation of the ingestion pipeline, database transactions, outbox pattern, message publishing, and worker execution, see:
 
-Business Value
-FlowMesh aims to help businesses:
-- Reduce integration maintenance: Reuse a common execution layer instead of repeatedly building delivery and retry logic for every connection.
-- Reduce operational overhead: Make failures visible and recoverable, reducing the amount of manual investigation and repair.
-- Protect business operations: Use idempotency and controlled retries to reduce duplicate business operations and improve recovery from transient failures.
-- Handle traffic spikes more safely: Buffer incoming work and control worker concurrency so downstream systems are not overwhelmed.
-- Free engineering capacity: Let teams focus more on business features and less on maintaining integration infrastructure.
-The goal is simple: less time managing integrations, fewer operational failures, and more reliable business workflows.
-How FlowMesh Works
-At a high level, FlowMesh separates event intake from downstream execution:
+[**Event Ingestion & Processing Flow**](docs/architecture/event-ingestion-flow.md)
+
+### High-Level Architecture
+
 ```mermaid
 flowchart LR
     A[Storefront / Source System] --> B[FlowMesh API]
@@ -38,93 +66,282 @@ flowchart LR
     C --> D[Outbox Relay]
     D --> E[(RabbitMQ)]
     E --> F[Worker]
-    F --> G[ERP / Payment / Inventory / Other System]
+    F --> G[ERP / Payment / Inventory]
     F --> C
 ```
-1. Ingest: A source system sends an event to the FlowMesh API.
-2. Validate and deduplicate: FlowMesh authenticates the tenant, validates the request, and applies an idempotency key.
-3. Persist: The event, its job record, the idempotency record, and an outbox record are written in one PostgreSQL transaction.
-4. Publish: A background relay publishes the outbox record to RabbitMQ after the database transaction commits.
-5. Execute: A worker consumes the message and invokes the appropriate connector or handler.
-6. Track and recover: FlowMesh records the job outcome. Transient failures can be retried; jobs that cannot be completed within the configured policy can be moved to a dead-letter state for inspection and controlled replay.
-For the step-by-step technical design—including duplicate delivery, transaction boundaries, worker behavior, retries, and failure scenarios—see [Event Ingestion & Processing Flow](docs/architecture/event-ingestion-flow.md).
-Core Engineering Principles
-1. PostgreSQL is the durable source of truth
-PostgreSQL stores the event and job state. RabbitMQ transports work to workers; it is not the only record that an event was accepted. The transactional outbox pattern is intended to keep the database state and the intent to publish a message consistent.
-2. At-least-once delivery with idempotent handling
-Messages may be delivered more than once. FlowMesh is designed around at-least-once processing and idempotent consumers, not an exactly-once delivery claim. Database constraints protect idempotency-key uniqueness, while downstream operations should use provider-supported idempotency keys where available.
-3. Asynchronous execution and backpressure
-The API should acknowledge an event after it has been durably accepted, without waiting for every downstream system to finish its work. Workers can then process jobs at a controlled concurrency, helping protect slower or rate-limited systems.
-4. Explicit failure handling
-Transient failures (for example, network timeouts, HTTP 429, or selected 5xx responses) should follow a retry policy with exponential backoff and jitter. Permanent failures and exhausted retries should become inspectable dead-letter jobs rather than disappearing from view.
-5. Tenant-scoped data access
-The intended initial model is shared-schema multi-tenancy. Every tenant-owned record and query must be scoped by tenant_id; authorization and database constraints should reinforce that isolation.
-6. Observability is part of reliability
-The system should make job state, attempts, queue depth, processing latency, and connector errors observable. A job should be diagnosable without relying on guesswork or manually searching unrelated services.
-MVP Scope
-The first milestone focuses on proving the reliable event-to-job execution path. It deliberately avoids building a large connector catalog or a visual workflow builder before the core processing model is dependable.
-Capability	Intended MVP behavior
-Tenant management	Create tenants and scope their data and credentials
-API authentication	Authenticate requests using tenant-scoped API keys
-Event ingestion	Accept normalized events through POST /v1/events
-Idempotency	Detect repeated submissions using a tenant-scoped idempotency key
-Durable persistence	Store events, jobs, idempotency records, and outbox records in PostgreSQL
-Outbox relay	Publish committed outbox records to RabbitMQ
-Worker execution	Consume jobs and invoke a handler or connector
-Retry policy	Retry eligible transient failures using backoff and jitter
-Dead-letter handling	Keep permanently failed or exhausted jobs available for inspection
-Replay	Allow an authorized operator or API client to request a controlled replay
-Basic observability	Expose job states, attempts, errors, and basic processing metrics
 
+### Event Processing Flow
 
-Current Development Status
-The project is in an early implementation stage. Based on the current development work, the foundation includes a NestJS/TypeScript application, PostgreSQL with TypeORM, a Docker Compose development environment for PostgreSQL and RabbitMQ, and an initial event persistence model.
+1. **Ingest:** A source system submits an event to the FlowMesh API.
+2. **Validate:** The API authenticates the tenant and validates the incoming request.
+3. **Deduplicate:** An idempotency key prevents duplicate event submissions.
+4. **Persist:** Events, jobs, idempotency records, and outbox records are persisted within a PostgreSQL transaction.
+5. **Publish:** An outbox relay publishes committed messages to RabbitMQ.
+6. **Execute:** Workers consume messages and invoke the appropriate handler or connector.
+7. **Track and Recover:** Execution results are recorded. Retryable failures are rescheduled, while exhausted or permanent failures become dead-letter jobs.
 
-The complete ingestion-to-worker pipeline is still being developed. The capabilities in the MVP table above should therefore be read as the target scope, not as a claim that every feature is already implemented or production-ready.
-Area	Current status
-NestJS / TypeScript project foundation	Started
-PostgreSQL and TypeORM setup	Started
-Docker Compose infrastructure for PostgreSQL and RabbitMQ	Available for local development
-Initial event persistence model	Started
-Tenant and API-key lifecycle	Planned
-Idempotent event ingestion	Planned
-Transactional outbox and relay	Planned
-RabbitMQ worker execution	Planned
-Retry policies and dead-letter handling	Planned
-Replay and operational visibility	Planned
-Production connectors and dashboard	Planned
+For the complete technical design and failure scenarios, see [Event Ingestion & Processing Flow](docs/architecture/event-ingestion-flow.md).
 
+---
 
-Update this table whenever implementation status changes. A feature should only move out of “Planned” when it exists in the codebase and has appropriate tests.
+## Getting Started
 
-Target Event and Job Lifecycle
-The initial job lifecycle is intended to use the following states:
-QUEUED
-  └──> PROCESSING
-         ├──> COMPLETED
-         ├──> RETRYING ──> PROCESSING
-         └──> DEAD_LETTER
-- QUEUED: Persisted and waiting for execution.
-- PROCESSING: Claimed by a worker and currently executing.
-- COMPLETED: The configured operation completed successfully.
-- RETRYING: A retryable failure occurred and another attempt is scheduled.
-- DEAD_LETTER: The job failed permanently or exhausted its retry policy and requires inspection or an explicit replay decision.
-Additional states such as CANCELLED, PAUSED, or compensation-related states may be introduced if later workflow requirements justify them.
-Integration Ecosystem
-FlowMesh is intended to use an adapter pattern so the core event-processing system is not tightly coupled to a particular vendor. The following are candidate integrations, not a claim that these connectors are currently available.
-Event sources
-- Shopify: Order and customer webhooks.
-- WooCommerce: Store and order events.
-- Custom applications: Events submitted through the FlowMesh API.
-Payment providers
+Follow these steps to prepare the local development environment.
+
+### Prerequisites
+
+Make sure you have the following installed:
+
+- Node.js (compatible with the project's configured version).
+- npm.
+- Docker.
+- Docker Compose.
+
+### 1. Clone the Repository
+
+```bash
+git clone <repository-url>
+cd flowMesh
+```
+
+### 2. Install Dependencies
+
+```bash
+npm install
+```
+
+### 3. Start Infrastructure Services
+
+Start PostgreSQL and RabbitMQ using Docker Compose:
+
+```bash
+docker compose up -d
+```
+
+Verify that the containers are running:
+
+```bash
+docker compose ps
+```
+
+### 4. Configure Environment Variables
+
+Create your local environment configuration using the project's environment example, if available:
+
+```bash
+cp .env.example .env
+```
+
+Configure the database and RabbitMQ connection settings to match the Docker Compose configuration.
+
+> If `.env.example` has not been added yet, configure the variables required by the application's TypeORM and RabbitMQ configuration before starting the application.
+
+### 5. Run the Application
+
+Start the NestJS development server:
+
+```bash
+npm run start:dev
+```
+
+The application should now be running using your local development configuration.
+
+> **Development note:** Database migrations, seed data, and API documentation commands will be documented here as they become available.
+
+---
+
+## Core Engineering Principles
+
+### 1. PostgreSQL as the Source of Truth
+
+PostgreSQL stores events, jobs, and their execution state.
+
+RabbitMQ is responsible for transporting messages between the application and workers. It is not the only record that an event was accepted.
+
+The transactional outbox pattern keeps database changes and the intent to publish messages consistent.
+
+### 2. At-Least-Once Delivery and Idempotency
+
+FlowMesh follows an at-least-once delivery model rather than claiming exactly-once message delivery.
+
+Messages may be delivered more than once. Consumers must therefore handle duplicate processing safely.
+
+Database constraints enforce idempotency-key uniqueness, while external operations should use provider-supported idempotency mechanisms whenever available.
+
+### 3. Asynchronous Execution and Backpressure
+
+The API should acknowledge an event once it has been durably accepted, without waiting for downstream operations to finish.
+
+Workers execute jobs independently with controlled concurrency to prevent traffic spikes from overwhelming downstream systems.
+
+### 4. Explicit Failure Handling
+
+Transient failures, such as network timeouts, HTTP 429 responses, and selected 5xx responses, should follow configurable retry policies.
+
+Exponential backoff and jitter help avoid repeated synchronized retry attempts.
+
+Permanent failures and exhausted retries should be moved to a dead-letter state for inspection and controlled replay.
+
+### 5. Tenant-Scoped Data Isolation
+
+The initial architecture uses shared-schema multi-tenancy.
+
+Every tenant-owned record and database query must be scoped by `tenant_id`.
+
+Authorization checks and database constraints should reinforce tenant isolation.
+
+### 6. Observability
+
+Reliability requires visibility into the system's execution behavior.
+
+The intended monitoring model includes:
+
+- Job execution states.
+- Processing attempts.
+- Queue depth.
+- Processing latency.
+- Connector errors.
+- Retry rates.
+- Dead-letter job counts.
+
+Every job should be diagnosable through its execution history rather than requiring manual investigation across unrelated services.
+
+---
+
+## MVP Scope
+
+The initial milestone focuses on establishing a reliable event-to-job execution pipeline.
+
+| Capability | Intended MVP Behavior |
+|---|---|
+| Tenant Management | Create tenants and isolate their data and credentials |
+| API Authentication | Authenticate requests using tenant-scoped API keys |
+| Event Ingestion | Accept normalized events through `POST /v1/events` |
+| Idempotency | Detect duplicate submissions using tenant-scoped idempotency keys |
+| Durable Persistence | Store events, jobs, idempotency records, and outbox records in PostgreSQL |
+| Outbox Relay | Publish committed outbox records to RabbitMQ |
+| Worker Execution | Consume jobs and invoke handlers or connectors |
+| Retry Policy | Retry eligible transient failures using backoff and jitter |
+| Dead-Letter Handling | Keep failed jobs available for inspection |
+| Replay | Support authorized and controlled job replay |
+| Basic Observability | Expose job states, attempts, errors, and processing metrics |
+
+The initial release prioritizes correctness and reliability over connector quantity or a visual workflow builder.
+
+---
+
+## Current Development Status
+
+FlowMesh is currently in its early implementation stage.
+
+The development foundation includes a NestJS/TypeScript application, PostgreSQL with TypeORM, Docker Compose infrastructure for PostgreSQL and RabbitMQ, and an initial event persistence model.
+
+The complete event-ingestion-to-worker pipeline is still under development.
+
+| Area | Current Status |
+|---|---|
+| NestJS / TypeScript foundation | Started |
+| PostgreSQL and TypeORM setup | Started |
+| Docker Compose infrastructure | Available for local development |
+| Initial event persistence model | Started |
+| Tenant and API-key lifecycle | Planned |
+| Idempotent event ingestion | Planned |
+| Transactional outbox and relay | Planned |
+| RabbitMQ worker execution | Planned |
+| Retry policies and dead-letter handling | Planned |
+| Replay and operational visibility | Planned |
+| Production connectors and dashboard | Planned |
+
+> Update this table whenever implementation status changes. A feature should only move out of `Planned` when it exists in the codebase and has appropriate tests.
+
+---
+
+## Target Event and Job Lifecycle
+
+The initial job lifecycle is designed around the following states:
+
+```mermaid
+stateDiagram-v2
+    [*] --> QUEUED
+    QUEUED --> PROCESSING
+    PROCESSING --> COMPLETED
+    PROCESSING --> RETRYING
+    RETRYING --> PROCESSING
+    PROCESSING --> DEAD_LETTER
+    DEAD_LETTER --> QUEUED: Authorized replay
+```
+
+| State | Description |
+|---|---|
+| `QUEUED` | Persisted and waiting for execution |
+| `PROCESSING` | Claimed by a worker and currently executing |
+| `COMPLETED` | The configured operation completed successfully |
+| `RETRYING` | A retryable failure occurred and another attempt is scheduled |
+| `DEAD_LETTER` | The job failed permanently or exhausted its retry policy and requires inspection or explicit replay |
+
+Additional states such as `CANCELLED`, `PAUSED`, and compensation-related states may be introduced if future workflow requirements justify them.
+
+---
+
+## Integration Ecosystem
+
+FlowMesh is designed around an adapter pattern to keep the core event-processing system independent of specific vendors.
+
+The following providers represent potential integration targets, not currently implemented connectors.
+
+### Event Sources
+
+- **Shopify:** Order and customer webhooks.
+- **WooCommerce:** Store and order events.
+- **Custom Applications:** Events submitted through the FlowMesh API.
+
+### Payment Providers
+
 - Stripe
 - PayPal
 - Adyen
-Payment operations require special care: FlowMesh-level idempotency helps prevent duplicate job handling, but the connector must also use the payment provider's idempotency mechanism where supported. A message queue alone cannot guarantee that an external payment side effect happens exactly once.
-ERP and inventory systems
-- Odoo: A candidate for an early integration and development testing.
-- SAP and NetSuite: Potential enterprise integrations for later stages.
-Shipping and notifications
-- Shipping and fulfillment: ShipStation, DHL, and other providers based on customer requirements.
-- Notifications: SendGrid, Slack, and other notification services.
-The initial release should focus on one or two real integration paths and prove that they work reliably before expanding the connector catalog.
+
+> Payment operations require special attention. FlowMesh-level idempotency helps prevent duplicate job handling, but external payment operations must also use the provider's idempotency mechanism where supported. A message queue alone cannot guarantee that an external payment side effect happens exactly once.
+
+### ERP and Inventory Systems
+
+- **Odoo:** Candidate for early integration and development testing.
+- **SAP:** Potential enterprise integration.
+- **NetSuite:** Potential enterprise integration.
+
+### Shipping and Notifications
+
+- **Shipping and Fulfillment:** ShipStation, DHL, and other providers based on customer requirements.
+- **Notifications:** SendGrid, Slack, and other notification services.
+
+The initial release should focus on one or two real integration paths and demonstrate reliable execution before expanding the connector ecosystem.
+
+---
+
+## Project Roadmap
+
+The development roadmap prioritizes the reliability of the core execution engine before expanding the integration ecosystem.
+
+1. Establish the database foundation and event persistence model.
+2. Implement tenant management and API authentication.
+3. Build idempotent event ingestion.
+4. Implement the transactional outbox and publishing relay.
+5. Integrate RabbitMQ and worker execution.
+6. Add retry policies and dead-letter handling.
+7. Implement controlled replay and execution visibility.
+8. Introduce initial production integration adapters.
+9. Expand observability and operational tooling.
+
+---
+
+## Contributing
+
+Contributions, architectural discussions, and technical feedback are welcome.
+
+As the project is in early development, architectural changes should be discussed before introducing major dependencies or changing core processing guarantees.
+
+---
+
+## License
+
+License information will be added once the project's licensing model is finalized.
