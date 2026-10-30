@@ -1,7 +1,6 @@
 import { Module } from '@nestjs/common';
 import { createObserveModule } from '@nestjs/observe';
-import { AppController } from './app.controller.js';
-import { AppService } from './app.service.js';
+import { EventsModule } from './module/events/events.module.js';
 
 export const { ObserveModule, ObserveInstrument } = createObserveModule();
 
@@ -10,12 +9,12 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
     // Distributed tracing, auto-correlated logs, request/job metrics, error
     // telemetry, alarms, and more — out of the box. Sign up at https://observe.nestjs.com
     ObserveModule.forRoot({
-      appKey: 'YOUR_APP_KEY',
-      appSecret: 'YOUR_APP_SECRET',
+      appKey: 'DZ&yxUEFoGDS9dk0',
+      appSecret: 'cn%7Q8tHq8dD7i!Ci!bthtGTGf5OHsn!AQcGITQkqQzW8',
       serviceId: 'flowmesh',
     }),
   ],
-  controllers: [AppController],
-  providers: [AppService],
+  controllers: [EventsModule],
+  providers: [],
 })
 export class AppModule {}
