@@ -1,12 +1,39 @@
-# FlowMesh
+
+# 🌊 FlowMesh
 
 **Reliable integrations and workflow execution for modern commerce systems.**
 
-FlowMesh is an event-driven integration and job-processing platform designed to connect commerce systems and execute business workflows reliably.
+## The Problem
 
-<sub>Project status: Early-stage development</sub>
+Modern commerce businesses depend on multiple systems to operate: e-commerce platforms, payment providers, inventory systems, ERPs, and shipping services.
 
-> **Note:** This project is under active development. The architecture and roadmap describe the intended system. Features are not considered implemented until they exist in the codebase and are tested.
+Connecting these systems through separate point-to-point integrations creates fragile dependencies. Traffic spikes can overwhelm downstream services, temporary API failures can interrupt critical workflows, and repeated requests can result in duplicate operations.
+
+As these integrations grow, engineering teams spend increasing amounts of time building, maintaining, monitoring, and troubleshooting them. Failed orders require manual intervention, operational overhead increases, and businesses risk losing time and revenue because their systems cannot reliably communicate.
+
+## The Solution
+
+**FlowMesh is a centralized integration and workflow execution layer designed to make communication between business systems reliable.**
+
+Instead of making every application responsible for handling failures and coordinating integrations, FlowMesh receives events, stores them durably, and processes them asynchronously through controlled workers.
+
+It is designed around key reliability mechanisms such as transactional outbox, idempotency, automatic retries, dead-letter queues, and backpressure.
+
+## The Business Value
+
+FlowMesh aims to help businesses:
+
+- **Reduce engineering costs:** Spend less time building and maintaining separate point-to-point integrations.
+- **Reduce operational overhead:** Minimize manual intervention when integrations fail.
+- **Protect business operations:** Prevent duplicate processing and improve recovery from temporary failures.
+- **Scale with confidence:** Handle traffic spikes without overwhelming downstream systems.
+
+**The goal is simple: less time managing integrations, fewer operational failures, and more reliable business workflows.**
+
+---
+
+*FlowMesh is currently in early-stage development, with its initial focus on reliable event ingestion and asynchronous job processing.*
+
 
 ---
 
